@@ -23,6 +23,10 @@ io.on("connection", (socket) => {
         io.emit("receiveMessage", data);
     });
 
+    socket.on("changeName", ({ oldName, newName }) => {
+        io.emit("nameChanged", { oldName, newName });
+    });
+
     socket.on("disconnect", () => {
         console.log("Usuário desconectado: " + socket.id);
     });
