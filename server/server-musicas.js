@@ -7,14 +7,15 @@ const app = express();
 app.use(cors());
 
 const server = http.createServer(app);
-
-// Adicione a configuração de CORS aqui:
 const io = new Server(server, {
     cors: {
-        origin: "http://localhost:3000", // endereço do seu frontend React
+        origin: "http://localhost:3000",
         methods: ["GET", "POST"]
     }
 });
+
+// Armazena o histórico de mensagens por sala
+const historico = {};
 
 io.on("connection", (socket) => {
     console.log("Novo usuário conectado: " + socket.id);
@@ -22,14 +23,25 @@ io.on("connection", (socket) => {
     socket.on("joinRoom", (room) => {
         socket.join(room);
         console.log(`Usuário ${socket.id} entrou na sala ${room}`);
+        // Envia o histórico para o usuário que acabou de entrar
+        if (historico[room]) {
+            socket.emit("history", { room, messages: historico[room] });
+        } else {
+            historico[room] = [];
+        }
     });
 
     socket.on("sendMessage", ({ room, message }) => {
+        if (!historico[room]) historico[room] = [];
+        historico[room].push(message);
         io.to(room).emit("receiveMessage", { room, message });
     });
 
     socket.on("changeName", ({ oldName, newName, room }) => {
-        io.to(room).emit("nameChanged", { oldName, newName });
+        const aviso = `⚠️ ${oldName} mudou o nome para ${newName}`;
+        if (!historico[room]) historico[room] = [];
+        historico[room].push(aviso);
+        io.to(room).emit("nameChanged", { oldName, newName, room });
     });
 
     socket.on("disconnect", () => {
@@ -37,6 +49,6 @@ io.on("connection", (socket) => {
     });
 });
 
-server.listen(3001, () => {
-    console.log("Servidor rodando na porta 3001");
+server.listen(3003, () => {
+    console.log("Servidor MÚSICAS rodando na porta 3003");
 });
