@@ -1,305 +1,260 @@
-import React, { useEffect, useState, useRef } from "react";
-import { io } from "socket.io-client";
-import jogosImg from "./assets/jogos.jpg";
-import carrosImg from "./assets/carros.jpg";
-import musicasImg from "./assets/musicas.jpg";
+import React, { useState, useRef, useEffect } from 'react';
+import { MessageCircle, Users, Settings, Mic, Headphones, User, Phone, Video, UserPlus } from 'lucide-react';
+import { io } from 'socket.io-client';
 
-const temas = [
-  { nome: "Jogos", img: jogosImg },
-  { nome: "Carros", img: carrosImg },
-  { nome: "Músicas", img: musicasImg },
-];
-
-const servidores = {
-  Jogos: "http://localhost:3001",
-  Carros: "http://localhost:3002",
-  Músicas: "http://localhost:3003",
-};
-
-function Chat() {
-  const [username, setUsername] = useState("");
-  const [nomeTravado, setNomeTravado] = useState(false);
-  const [tema, setTema] = useState(temas[0]);
-  const [mensagem, setMensagem] = useState("");
-  const [mensagens, setMensagens] = useState({
-    Jogos: [],
-    Carros: [],
-    Músicas: [],
+const ChatInterface = () => {
+  const [activeChannel, setActiveChannel] = useState('carros');
+  const [message, setMessage] = useState('');
+  const [username, setUsername] = useState('Usuário');
+  const [messages, setMessages] = useState({
+    carros: [],
+    jogos: [],
+    música: []
   });
-  const [socket, setSocket] = useState(() => io(servidores[temas[0].nome]));
-  const inputRef = useRef(null);
 
+  // Socket.io
+  const socketRef = useRef();
+
+  // Mapear canal para porta
+  const channelToPort = {
+    carros: 3001,
+    jogos: 3002,
+    música: 3003
+  };
+
+  // Sempre que o canal mudar, conectar ao servidor correto
   useEffect(() => {
-    // Desconecta o socket antigo e conecta no novo servidor
-    socket.disconnect();
-    const novoSocket = io(servidores[tema.nome]);
-    setSocket(novoSocket);
+    // Desconectar do socket anterior, se existir
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+    }
 
-    // Ao entrar na sala, pedir o histórico
-    novoSocket.emit("joinRoom", tema.nome);
+    const port = channelToPort[activeChannel];
+    socketRef.current = io(`http://localhost:${port}`);
 
-    novoSocket.on("history", ({ room, messages }) => {
-      setMensagens((msgs) => ({
-        ...msgs,
-        [room]: messages,
+    // Entrar na sala (opcional, caso queira manter joinRoom)
+    socketRef.current.emit('joinRoom', activeChannel);
+
+    // Receber mensagens do backend
+    socketRef.current.on('receiveMessage', ({ room, message }) => {
+      setMessages(prev => ({
+        ...prev,
+        [room]: [...(prev[room] || []), message]
       }));
     });
 
-    novoSocket.on("receiveMessage", ({ room, message }) => {
-      setMensagens((msgs) => ({
-        ...msgs,
-        [room]: [...(msgs[room] || []), message],
-      }));
-    });
-
-    novoSocket.on("nameChanged", ({ oldName, newName, room }) => {
-      setMensagens((msgs) => ({
-        ...msgs,
-        [room]: [...(msgs[room] || []), `⚠️ ${oldName} mudou o nome para ${newName}`],
-      }));
+    // Receber histórico ao entrar na sala
+    socketRef.current.on('history', ({ room, history }) => {
+      setMessages(prev => {
+        // Garante que history é um array
+        const safeHistory = Array.isArray(history) ? history : [];
+        const current = prev[room] || [];
+        // Adiciona apenas mensagens que não existem ainda (por id)
+        const merged = [...safeHistory];
+        current.forEach(msg => {
+          if (!merged.find(m => m.id === msg.id)) {
+            merged.push(msg);
+          }
+        });
+        return {
+          ...prev,
+          [room]: merged
+        };
+      });
     });
 
     return () => {
-      novoSocket.off("history");
-      novoSocket.off("receiveMessage");
-      novoSocket.off("nameChanged");
-      novoSocket.disconnect();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tema]);
-
-  const travarNome = () => {
-    if (username.trim()) setNomeTravado(true);
-  };
-
-  const enviarMensagem = (e) => {
-    e.preventDefault();
-    if (!mensagem.trim() || !nomeTravado) return;
-    socket.emit("sendMessage", {
-      room: tema.nome,
-      message: `${username}: ${mensagem}`,
-    });
-    setMensagem("");
-    inputRef.current.focus();
-  };
-
-  const mudarTema = (nomeTema) => {
-    if (tema.nome !== nomeTema) {
-      const temaObj = temas.find((t) => t.nome === nomeTema);
-      if (temaObj) {
-        setTema(temaObj);
+      if (socketRef.current) {
+        socketRef.current.disconnect();
       }
-    }
+    };
+    // eslint-disable-next-line
+  }, [activeChannel]);
+
+  const channels = [
+    { id: 'carros', name: 'carros', image: require('./assets/carros.jpg') },
+    { id: 'jogos', name: 'jogos', image: require('./assets/jogos.jpg') },
+    { id: 'música', name: 'música', image: require('./assets/musicas.jpg') }
+  ];
+
+  const friends = [
+    { name: 'larihs2634', status: 'Em uma chamada', isOnline: true, avatar: '🎮' },
+    { name: 'oYamanaka', status: 'Em um canal de voz', isOnline: true, avatar: '👤' },
+    { name: 'Família Gamer', status: 'Call de Verdade', isOnline: true, avatar: '🎯' },
+    { name: 'TeamAgo', status: 'Jogando', isOnline: true, avatar: '🎪' },
+    { name: 'Little Gugas', status: 'Ausente', isOnline: false, avatar: '🎭' },
+    { name: '_shadow♡', status: 'Offline', isOnline: false, avatar: '🌙' }
+  ];
+
+  const messagesEndRef = useRef(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, activeChannel]);
+
+  const sendMessage = (e) => {
+    e.preventDefault();
+    if (!message.trim()) return;
+
+    const newMessage = {
+      id: Date.now(),
+      user: username,
+      message: message,
+      time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+      isOnline: true
+    };
+
+    // Enviar para o backend
+    socketRef.current.emit('sendMessage', {
+      room: activeChannel,
+      message: newMessage
+    });
+    setMessage('');
+  };
+
+  const getChannelIcon = (channelId) => {
+    const channel = channels.find(c => c.id === channelId);
+    const IconComponent = channel?.icon || MessageCircle;
+    return <IconComponent size={20} />;
   };
 
   return (
-    <div
-      style={{
-        display: "flex",
-        height: "100vh",
-        fontFamily: "Segoe UI, Arial, sans-serif",
-        background: "#23272a"
-      }}
-    >
-      {/* Barra lateral moderna */}
-      <div
-        style={{
-          width: 100,
-          background: "#202225",
-          color: "#fff",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          paddingTop: 24,
-          borderRight: "1px solid #18191c",
-          boxShadow: "2px 0 8px #18191c33"
-        }}
-      >
-        {temas.map((t) => (
+    <div className="flex h-screen bg-gray-800 text-white font-sans">
+      {/* Sidebar - Servers with images */}
+      <div className="w-20 bg-gray-900 flex flex-col items-center py-6 space-y-4">
+        {channels.map((channel) => (
           <div
-            key={t.nome}
-            onClick={() => mudarTema(t.nome)}
-            title={t.nome}
-            style={{
-              cursor: "pointer",
-              background: tema.nome === t.nome ? "#5865f2" : "#36393f",
-              borderRadius: "50%",
-              marginBottom: 24,
-              width: 64,
-              height: 64,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              boxShadow: tema.nome === t.nome ? "0 0 12px #5865f2" : "none",
-              border: tema.nome === t.nome ? "3px solid #fff" : "3px solid #36393f",
-              transition: "all 0.2s"
-            }}
+            key={channel.id}
+            onClick={() => setActiveChannel(channel.id)}
+            className={`w-12 h-12 rounded-2xl flex items-center justify-center cursor-pointer shadow-lg overflow-hidden border-2 transition-all duration-200 ${
+              activeChannel === channel.id ? 'border-indigo-500' : 'border-transparent hover:border-indigo-300'
+            }`}
+            title={channel.name}
           >
             <img
-              src={t.img}
-              alt={t.nome}
-              style={{
-                width: 40,
-                height: 40,
-                objectFit: "cover",
-                borderRadius: "50%"
-              }}
+              src={channel.image}
+              alt={channel.name}
+              className="object-cover w-full h-full"
             />
           </div>
         ))}
       </div>
-      {/* Área do chat moderna */}
-      <div
-        style={{
-          flex: 1,
-          display: "flex",
-          flexDirection: "column",
-          background: "#36393f",
-        }}
-      >
-        {/* Topo do chat */}
-        <div
-          style={{
-            padding: "18px 24px",
-            color: "#fff",
-            borderBottom: "1px solid #23272a",
-            display: "flex",
-            alignItems: "center",
-            background: "#2f3136"
-          }}
-        >
-          <img src={tema.img} alt={tema.nome} style={{ width: 32, height: 32, borderRadius: 8, marginRight: 16, border: "2px solid #5865f2" }} />
-          <h2 style={{ margin: 0, fontWeight: 600, fontSize: 22 }}>{tema.nome}</h2>
+
+      {/* Sidebar - Channels */}
+      <div className="w-64 bg-gray-750 flex flex-col">
+        <div className="p-4 border-b border-gray-600 shadow-lg">
+          <h1 className="text-white font-bold text-lg">Meu Servidor</h1>
         </div>
-        {/* Mensagens com balões */}
-        <div
-          style={{
-            flex: 1,
-            overflowY: "auto",
-            padding: "24px 32px 24px 32px",
-            background: "#36393f",
-            color: "#fff",
-            display: "flex",
-            flexDirection: "column",
-            gap: 10
-          }}
-        >
-          {mensagens[tema.nome].map((msg, idx) => {
-            // Separa nome e texto para balão
-            let nome = null;
-            let texto = msg;
-            if (msg.includes(": ")) {
-              const split = msg.split(": ");
-              nome = split[0];
-              texto = split.slice(1).join(": ");
-            }
-            const isAviso = msg.startsWith("⚠️");
-            return (
-              <div key={idx} style={{
-                display: "flex",
-                flexDirection: "row",
-                alignItems: "flex-end",
-                marginBottom: 6,
-                justifyContent: isAviso ? "center" : (nome === username ? "flex-end" : "flex-start")
-              }}>
-                {!isAviso && nome && (
-                  <span style={{
-                    fontWeight: 600,
-                    color: nome === username ? "#43b581" : "#fff",
-                    marginRight: 8,
-                    fontSize: 15
-                  }}>{nome}:</span>
-                )}
-                <span style={{
-                  background: isAviso ? "#ffb347" : (nome === username ? "#5865f2" : "#40444b"),
-                  color: isAviso ? "#23272a" : "#fff",
-                  borderRadius: 16,
-                  padding: isAviso ? "6px 18px" : "10px 18px",
-                  fontSize: 15,
-                  maxWidth: 400,
-                  wordBreak: "break-word",
-                  boxShadow: isAviso ? "0 0 8px #ffb34755" : "0 1px 4px #18191c33"
-                }}>{texto}</span>
-              </div>
-            );
-          })}
-        </div>
-        {/* Input fixo no rodapé */}
-        <div style={{ background: "#2f3136", borderTop: "1px solid #23272a", padding: "16px 24px" }}>
-          {!nomeTravado && (
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <input
-                type="text"
-                placeholder="Digite seu nome"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                style={{
-                  width: 220,
-                  padding: 10,
-                  borderRadius: 8,
-                  border: "none",
-                  outline: "none",
-                  fontSize: 15,
-                  background: "#40444b",
-                  color: "#fff"
-                }}
-              />
-              <button
-                onClick={travarNome}
-                style={{
-                  background: "#5865f2",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: 8,
-                  padding: "10px 22px",
-                  fontWeight: 600,
-                  fontSize: 15,
-                  cursor: "pointer"
-                }}
-              >Entrar</button>
+        
+        <div className="flex-1 p-4">
+          <div className="mb-6">
+            <h3 className="text-gray-400 text-sm font-semibold uppercase tracking-wide mb-2">Canais de Texto</h3>
+            <div className="space-y-1">
+              {channels.map(channel => (
+                <div
+                  key={channel.id}
+                  onClick={() => setActiveChannel(channel.id)}
+                  className={`flex items-center space-x-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-200 ${
+                    activeChannel === channel.id 
+                      ? 'bg-gray-600 text-white' 
+                      : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                  }`}
+                >
+                  <span className="text-gray-400">#</span>
+                  <span className="text-sm font-medium">{channel.name}</span>
+                </div>
+              ))}
             </div>
-          )}
-          {nomeTravado && (
-            <form
-              onSubmit={enviarMensagem}
-              style={{ display: "flex", alignItems: "center", gap: 12 }}
-            >
-              <input
-                type="text"
-                placeholder={`Mensagem em #${tema.nome}`}
-                value={mensagem}
-                onChange={(e) => setMensagem(e.target.value)}
-                ref={inputRef}
-                style={{
-                  flex: 1,
-                  padding: 10,
-                  borderRadius: 8,
-                  border: "none",
-                  outline: "none",
-                  fontSize: 15,
-                  background: "#40444b",
-                  color: "#fff"
-                }}
-              />
-              <button
-                type="submit"
-                style={{
-                  background: "#5865f2",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: 8,
-                  padding: "10px 22px",
-                  fontWeight: 600,
-                  fontSize: 15,
-                  cursor: "pointer"
-                }}
-              >Enviar</button>
-            </form>
-          )}
+          </div>
+        </div>
+
+        {/* User area com edição de perfil */}
+        <div className="p-4 bg-gray-800 border-t border-gray-600">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 bg-indigo-500 rounded-full flex items-center justify-center">
+                <User size={16} />
+              </div>
+              <div>
+                <input
+                  type="text"
+                  value={username}
+                  onChange={e => setUsername(e.target.value)}
+                  className="text-sm font-medium bg-transparent border-b border-gray-600 focus:border-indigo-500 outline-none text-white w-28"
+                  maxLength={20}
+                  placeholder="Seu nome"
+                />
+                <div className="text-xs text-gray-400">Online</div>
+              </div>
+            </div>
+            <div className="flex space-x-2">
+              <Mic size={16} className="text-gray-400 hover:text-white cursor-pointer" />
+              <Headphones size={16} className="text-gray-400 hover:text-white cursor-pointer" />
+              <Settings size={16} className="text-gray-400 hover:text-white cursor-pointer" />
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col">
+        {/* Header */}
+        <div className="p-4 border-b border-gray-600 bg-gray-750 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              {getChannelIcon(activeChannel)}
+              <h2 className="text-xl font-semibold">#{activeChannel}</h2>
+            </div>
+            <div className="flex items-center space-x-4">
+              <Phone size={20} className="text-gray-400 hover:text-white cursor-pointer" />
+              <Video size={20} className="text-gray-400 hover:text-white cursor-pointer" />
+              <Users size={20} className="text-gray-400 hover:text-white cursor-pointer" />
+            </div>
+          </div>
+        </div>
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {messages[activeChannel]?.map((msg) => (
+            <div key={msg.id} className="flex items-start space-x-3 hover:bg-gray-750 hover:bg-opacity-30 p-2 rounded-lg transition-colors duration-150">
+              <div className="w-10 h-10 bg-indigo-500 rounded-full flex items-center justify-center flex-shrink-0">
+                <span className="text-sm font-bold">{msg.user.charAt(0).toUpperCase()}</span>
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center space-x-2">
+                  <span className="font-semibold text-white">{msg.user}</span>
+                  <span className="text-xs text-gray-400">{msg.time}</span>
+                </div>
+                <p className="text-gray-200 mt-1">{msg.message}</p>
+              </div>
+            </div>
+          ))}
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Message Input */}
+        <div className="p-4 bg-gray-750">
+          <div className="flex items-center space-x-4">
+            <div className="flex-1">
+              <input
+                type="text"
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && sendMessage(e)}
+                placeholder={`Conversar em #${activeChannel}`}
+                className="w-full px-4 py-3 bg-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all duration-200"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
   );
-}
+};
 
-export default Chat;
+export default ChatInterface;
